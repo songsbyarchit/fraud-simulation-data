@@ -28,33 +28,78 @@ partners = pd.DataFrame({
     "is_active": np.random.choice([True, True, True, False], num_partners)
 })
 
-# Generate messages
-date_range = [start_date + timedelta(days=i) for i in range(num_days)]
+# Hour weights (simulate waking hour activity)
+hour_weights = [0.01]*6 + [0.03, 0.06, 0.08, 0.1, 0.12, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03] + [0.01]*6
+hour_bins = list(range(24))
+
+# Generate messages with realistic behaviour
 message_data = []
+industry_weekend_modifier = {
+    "banking": 0.5,
+    "healthcare": 0.6,
+    "gov": 0.4,
+    "retail": 1.0,
+    "logistics": 0.9
+}
 
 for _ in range(num_messages):
-    ts = random.choice(date_range) + timedelta(
-        hours=random.randint(0, 23), minutes=random.randint(0, 59), seconds=random.randint(0, 59)
-    )
+    day = random.randint(0, num_days - 1)
+    base_date = start_date + timedelta(days=day)
+
+    # Subtle weighting for pre-holiday spikes
+    pre_holiday_boost = 1.0
+    if base_date.day in [22, 23, 24, 30, 31]:
+        pre_holiday_boost = random.uniform(1.00, 1.15)  # 5–15% subtle volume bump
+    if random.random() > pre_holiday_boost:
+        continue
+
+    hour = random.choices(hour_bins, weights=hour_weights, k=1)[0]
+    minute = random.randint(0, 59)
+    second = random.randint(0, 59)
+    ts = base_date + timedelta(hours=hour, minutes=minute, seconds=second)
+
+    is_weekend = ts.weekday() >= 5
+    is_holiday = ts.day in [24, 25, 26, 30, 31, 1]
+    partner = partners.sample(1).iloc[0]
+    industry = partner["industry"]
+
+    # Adjust volume based on weekend + industry
+    if is_weekend and random.random() > industry_weekend_modifier[industry]:
+        continue
+
+    # Base fraud + anomaly
+    fraud_flag = False
+    anomaly_score = round(np.random.normal(loc=0.2, scale=0.1), 3)
+
+    # Holiday fraud spike
+    base_fraud_chance = max(0, np.random.normal(loc=0.007, scale=0.002))  # centre ~0.7%, ~95% within 0.3%–1.1%
+    holiday_fraud_chance = max(0, np.random.normal(loc=0.02, scale=0.005)) if is_holiday else 0  # ~2% mean, flexible
+
+    # Apply fraud logic
+    if random.random() < (holiday_fraud_chance or base_fraud_chance):
+        fraud_flag = True
+        anomaly_score = round(np.random.normal(
+            loc=0.85 if is_holiday else 0.7,
+            scale=0.08 if is_holiday else 0.12
+        ), 3)
+
+    # Subtle legit message drop on key holidays (but not total cutoff)
+    if ts.day in [25, 1] and not fraud_flag:
+        if random.random() > np.random.normal(loc=0.5, scale=0.1):  # ~40% chance drop, not 70%
+            continue
+
     message_data.append({
         "message_id": str(uuid.uuid4()),
         "timestamp": ts,
-        "partner_id": random.choice(partners["partner_id"]),
+        "partner_id": partner["partner_id"],
         "channel": random.choice(channels),
         "status": np.random.choice(status_choices, p=[0.9, 0.07, 0.03]),
-        "fraud_flag": False,
-        "anomaly_score": round(np.random.normal(loc=0.2, scale=0.1), 3),
+        "fraud_flag": fraud_flag,
+        "anomaly_score": anomaly_score,
         "message_content": random.choice(["Promo", "2FA", "Reminder", "Update", "Alert"])
     })
 
 messages = pd.DataFrame(message_data)
-
-# Inject more fraud around Christmas and NYE
-for idx in messages.sample(frac=0.05).index:
-    ts = messages.loc[idx, "timestamp"]
-    if ts.day in [24, 25, 26, 30, 31, 1]:
-        messages.at[idx, "fraud_flag"] = True
-        messages.at[idx, "anomaly_score"] = round(np.random.normal(loc=0.9, scale=0.05), 3)
 
 # Generate routing
 routing = messages[["message_id"]].copy()
@@ -73,9 +118,9 @@ anomalies = anomalies[["message_id", "anomaly_type", "anomaly_score", "reason", 
 # Generate blocked entities
 blocked_entities = pd.DataFrame({
     "entity_type": np.random.choice(["partner_id", "ip_address", "route_id"], 100),
-    "entity_id": [random.choice(partners["partner_id"]) if t == "partner_id" 
+    "entity_id": [random.choice(partners["partner_id"]) if t == "partner_id"
                   else f"IP_{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
-                  if t == "ip_address" 
+                  if t == "ip_address"
                   else f"R{random.randint(1000, 9999)}" for t in np.random.choice(["partner_id", "ip_address", "route_id"], 100)],
     "reason": np.random.choice(["high fraud rate", "manual review", "policy breach"], 100),
     "block_time": [start_date + timedelta(days=random.randint(0, num_days)) for _ in range(100)],
@@ -83,8 +128,8 @@ blocked_entities = pd.DataFrame({
 })
 
 # Save all tables to CSV
-messages.to_csv("/mnt/data/messages.csv", index=False)
-partners.to_csv("/mnt/data/partners.csv", index=False)
-routing.to_csv("/mnt/data/routing.csv", index=False)
-anomalies.to_csv("/mnt/data/anomalies.csv", index=False)
-blocked_entities.to_csv("/mnt/data/blocked_entities.csv", index=False)
+messages.to_csv("data/messages.csv", index=False)
+partners.to_csv("data/partners.csv", index=False)
+routing.to_csv("data/routing.csv", index=False)
+anomalies.to_csv("data/anomalies.csv", index=False)
+blocked_entities.to_csv("data/blocked_entities.csv", index=False)

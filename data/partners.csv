@@ -1,0 +1,11 @@
+partner_id,name,region,industry,onboarding_date,is_active
+P001,Partner_1,NA,healthcare,2024-09-19,True
+P002,Partner_2,UK,healthcare,2024-11-03,True
+P003,Partner_3,NA,logistics,2024-06-28,False
+P004,Partner_4,NA,gov,2024-07-13,True
+P005,Partner_5,UK,healthcare,2024-07-24,True
+P006,Partner_6,UK,logistics,2024-09-05,True
+P007,Partner_7,NA,retail,2024-09-24,False
+P008,Partner_8,EU,gov,2024-10-02,True
+P009,Partner_9,NA,retail,2024-04-13,True
+P010,Partner_10,NA,gov,2024-10-30,True
